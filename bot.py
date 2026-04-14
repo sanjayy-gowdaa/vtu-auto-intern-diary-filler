@@ -38,16 +38,17 @@ class DiaryEntry(BaseModel):
     learnings: str
     blockers: str
 
-def generate_diary_content():
+def generate_diary_content(previous_entry=None):
     """Uses Gemini API to generate daily diary content tailored to the specific format."""
-    prompt = """
-    Generate a daily internship diary entry for a student working on an "Android App Development using Gen AI" project.
     
-    The output should be extremely brief and professional. Provide the output in these 3 string fields:
+    progress_context = ""
+    if previous_entry:
+        progress_context = f"\n\nHere is the previous day's diary entry for context:\n- Description: {previous_entry.description}\n- Learnings: {previous_entry.learnings}\n- Blockers: {previous_entry.blockers}\n\nPlease ensure this new entry shows logical progression and continuation from the previous day's work."
+
+    prompt = f"""
+    Generate a daily internship diary entry for a student working on an "Android App Development using Gen AI" project.{progress_context}
     
-    1. description: A 2-3 sentence paragraph starting with phrases like "On this day, I focused on...", summarizing the work done on Android UI, AI APIs, Kotlin, testing, bug-fixing, etc.
-    2. learnings: 3-4 short bullet points formatted as plain text on new lines. Start each bullet with an action verb (e.g. "Understood module integration in Android apps.\nImproved end-to-end testing skills."). NO Markdown. NO Emojis in this field.
-    3. blockers: 1 short sentence describing a mild, realistic blocker (e.g. "Faced minor integration conflicts between modules, resolved through code adjustments."). If none, just provide a mild generic technical blocker that was resolved.
+    i had done the course of android app development first steps learning kotlin .
     """
 
     response = client.models.generate_content(
@@ -86,11 +87,14 @@ def verify_token():
     print("[+] Token works and successfully fetched your internships.")
     return True
 
-def submit_diary_entry(entry_date, is_long_day=False):
+def submit_diary_entry(entry_date, is_long_day=False, previous_entry=None):
     """Submits the diary entry using dynamically generated details from Gemini."""
     
-    print("[*] Contacting Gemini API for unique diary content...")
-    generated = generate_diary_content()
+    if previous_entry:
+        print("[*] Contacting Gemini API for unique diary content, progressing from previous entry...")
+    else:
+        print("[*] Contacting Gemini API for unique diary content...")
+    generated = generate_diary_content(previous_entry)
     
     # Alternate between 2 and 4 hours
     hours_worked = 4 if is_long_day else 2
@@ -115,13 +119,16 @@ def submit_diary_entry(entry_date, is_long_day=False):
         if response.status_code in [200, 201]:
             print("[+] Success!")
             print("Response:", json.dumps(response.json(), indent=2))
+            return generated
         else:
             print(f"[-] Failed with status code: {response.status_code}")
             print("Response text:", response.text)
             print("\nWait! The payload variables might have wrong names. Please check Chrome DevTools Network tab to see the exact payload format.")
+            return None
             
     except requests.exceptions.RequestException as e:
         print(f"[-] Request Failed: {e}")
+        return None
 
 def get_date_range(start_date_str, end_date_str):
     """Returns a list of date strings between start_date and end_date (inclusive)."""
@@ -145,6 +152,8 @@ if __name__ == "__main__":
     if verify_token():
         print(f"\n[*] Found {len(dates_to_fill)} days to process.")
         
+        previous_entry = None
+        
         for index, current_date in enumerate(dates_to_fill):
             print(f"\n----------------------------------------")
             print(f"[*] Processing Day {index + 1}/{len(dates_to_fill)}: {current_date}")
@@ -152,7 +161,9 @@ if __name__ == "__main__":
             # Alternate between True and False for the 4 hr / 2 hr toggle
             is_long_day = (index % 2 == 0)
             
-            submit_diary_entry(entry_date=current_date, is_long_day=is_long_day)
+            result = submit_diary_entry(entry_date=current_date, is_long_day=is_long_day, previous_entry=previous_entry)
+            if result:
+                previous_entry = result
             
             # Sleep to prevent hitting rate limits or spam block
             if index < len(dates_to_fill) - 1:
